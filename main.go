@@ -74,7 +74,7 @@ func BuildQRCommand(qrPath string, text string, opts QROptions) string {
 	if opts.Mode != "" {
 		args = append(args, "-m", opts.Mode)
 	}
-	if opts.Version > 0 {
+	if opts.Version > 0 && opts.Version <= 40 {
 		args = append(args, "-v", strconv.Itoa(opts.Version))
 	}
 	if opts.ECLevel != "" {
@@ -86,7 +86,7 @@ func BuildQRCommand(qrPath string, text string, opts QROptions) string {
 	if opts.Compact {
 		args = append(args, "-c")
 	}
-	if opts.Border > 0 {
+	if opts.Border > 0 && opts.Border <= 4 {
 		args = append(args, "-b", strconv.Itoa(opts.Border))
 	}
 	if opts.Invert {
@@ -99,10 +99,15 @@ func BuildQRCommand(qrPath string, text string, opts QROptions) string {
 		args = append(args, "-u")
 	}
 
-	// 拼接完整命令
 	argsStr := strings.Join(args, " ")
 	return fmt.Sprintf("echo '%s' | %s %s", text, qrPath, argsStr)
 }
+
+func IsTriggerOn(q string) bool {
+	input := strings.ToLower(q)
+	return input == "true" || input == "on" || input == "yes" || input == "1"
+}
+
 func SetupRouter() *gin.Engine {
 	qrPath, err := FindQRExecutable()
 	if err != nil {
@@ -115,59 +120,73 @@ func SetupRouter() *gin.Engine {
 	r.GET("/", func(c *gin.Context) {
 		result := ""
 
-		// 从查询参数中获取选项
 		opts := QROptions{
-			Border: 1, // 默认边框宽度
+			Mode:      "8",   // -m 默认是 '8' (8-bit模式)
+			Version:   0,     //-v 默认是 0 (自动选择版本)
+			ECLevel:   "1",   // -e 默认是 '1' (L级别纠错)
+			Large:     false, // -l 默认是 false (不使用巨型模式)
+			Compact:   false, // -c 默认是 false (不使用紧凑模式)
+			Border:    1,     // -b 默认是 1 (边框宽度为1)
+			Invert:    false, // -i 默认是 false (不反转颜色)
+			Colorless: false, // -p 默认是 false (有颜色输出,除非不是终端)
+			UTF8BOM:   false, // -u 默认是 false (不输出UTF-8 BOM)
+			Animated:  false, // 默认不启用动画
 		}
 
-		// 处理 bool 类型参数
-		if animated := c.Query("animated"); animated == "true" {
-			opts.Animated = true
-		}
-		if large := c.Query("large"); large == "true" {
-			opts.Large = true
-		}
-		if compact := c.Query("compact"); compact == "true" {
-			opts.Compact = true
-		}
-		if invert := c.Query("invert"); invert == "true" {
-			opts.Invert = true
-		}
-		if colorless := c.Query("colorless"); colorless == "true" {
-			opts.Colorless = true
-		}
-		if utf8bom := c.Query("utf8bom"); utf8bom == "true" {
-			opts.UTF8BOM = true
-		}
-
-		// 处理字符串类型参数
-		if mode := c.Query("mode"); mode != "" {
-			if strings.Contains("na8k", mode) { // 验证模式是否有效
+		if mode := strings.ToLower(c.Query("mode")); mode != "" {
+			if mode == "n" || mode == "a" || mode == "8" || mode == "k" {
 				opts.Mode = mode
 			}
 		}
-		if ecLevel := c.Query("ecLevel"); ecLevel != "" {
-			if strings.Contains("lmqh1234", ecLevel) { // 验证EC级别是否有效
-				opts.ECLevel = ecLevel
-			}
-		}
 
-		// 处理整数类型参数
 		if version := c.Query("version"); version != "" {
 			if v, err := strconv.Atoi(version); err == nil && v >= 1 && v <= 40 {
 				opts.Version = v
 			}
 		}
+
+		if ecLevel := strings.ToLower(c.Query("ecLevel")); ecLevel != "" {
+			if ecLevel == "l" || ecLevel == "m" || ecLevel == "q" || ecLevel == "h" {
+				opts.ECLevel = ecLevel
+			}
+			if ecLevel == "1" || ecLevel == "2" || ecLevel == "3" || ecLevel == "4" {
+				opts.ECLevel = ecLevel
+			}
+		}
+
+		if large := c.Query("large"); IsTriggerOn(large) {
+			opts.Large = true
+		}
+
+		if compact := c.Query("compact"); IsTriggerOn(compact) {
+			opts.Compact = true
+		}
+
 		if border := c.Query("border"); border != "" {
 			if b, err := strconv.Atoi(border); err == nil && b >= 1 && b <= 4 {
 				opts.Border = b
 			}
 		}
 
-		// 获取文本内容，如果没有提供则使用默认值
+		if invert := c.Query("invert"); IsTriggerOn(invert) {
+			opts.Invert = true
+		}
+
+		if colorless := c.Query("colorless"); IsTriggerOn(colorless) {
+			opts.Colorless = true
+		}
+
+		if utf8bom := c.Query("utf8bom"); IsTriggerOn(utf8bom) {
+			opts.UTF8BOM = true
+		}
+
+		if animated := c.Query("animated"); IsTriggerOn(animated) {
+			opts.Animated = true
+		}
+
 		text := c.Query("text")
 		if text == "" {
-			text = "https://mp.weixin.qq.com/s/CLCBKrDANQsuFhGYAujzaQ"
+			text = "https://github.com/soulteary/docker-text-qrcode"
 		}
 
 		commandTpl := BuildQRCommand(qrPath, text, opts)
