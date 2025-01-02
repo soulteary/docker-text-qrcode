@@ -1,7 +1,7 @@
 .DS_Store
 
-/qr
+qr
 
-/tests
-/tests.dir
-/tests.log
+tests
+tests.dir
+tests.log
